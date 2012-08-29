@@ -1,11 +1,11 @@
 
 [![Documentation][logo]][documentation]
 [logo]: src/UNIzab-documentation.bundle/assets/img/UNIzab-coverpage.png
-[documentation]: src/UNIzab-user-documentation.textbundle/UNIzab.pdf
+[documentation]: RPM/INSTALL-UNIzab-1.0-12.md
 
 # UNIzab - client
 
-UNIzab is a zabbix](https://www.zabbix.com/) client made for Check Point
+**UNIzab** is a [zabbix](https://www.zabbix.com/) client made for Check Point
 firewall-1 version 75.x - 77.30 both 32 and 64bit systems. It comes with
 a set of collectors for interface statistic, firewall kernel statistic,
 certificate expiration and more. It requires a zabbix server for monitoring,
