@@ -25,7 +25,7 @@ The RPM and the installation instruction is found [in RPM](RPM).
 ## Documentation
 
 There is no documentation for the zabbix configuration, please consult
-[zabbix](https://www.zabbix.com/) and e.g. [youtube](https://www.youtube.com/results?search_query=zabbi).
+[zabbix](https://www.zabbix.com/) and e.g. [youtube](https://www.youtube.com/results?search_query=zabbix+administration).
 
 The installation procedure is described in `INSTALL-UNIzab-version.md`.
 
