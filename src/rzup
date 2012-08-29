@@ -1,0 +1,39 @@
+#! /bin/bash
+#
+# $Header: /lan/ssi/shared/software/internal/UNIzab/src/RCS/rzup,v 1.1 2015/05/12 16:58:22 root Exp $
+#
+# UserParameter=$X,/var/opt/UNIzab/bin/rzup $X /var/opt/UNIzab/data/data_min
+#
+
+
+VAR=$1
+DATAFILE=$2
+
+if [ -z "${VAR}" ]; then
+	echo VAR missing. usage: $0 VAR FILE
+	exit 0
+fi
+
+if [ -z "${DATAFILE}" ]; then
+	echo DATAFILE missing. usage: $0 VAR FILE
+	exit 0
+fi
+
+DATAFILE=/var/opt/UNIzab/data/${DATAFILE}
+
+# file empty/missing
+if [ ! -s ${DATAFILE} ]; then
+	echo "${DATAFILE} not found or empty"
+	sleep 10
+fi
+
+grep -q col2za-finished-ok ${DATAFILE}
+case $? in
+	0)	:
+	;;
+	*)	# not found: hope time will clear up the mess 
+		sleep 10 
+	;;
+esac
+
+awk -F';' '$1 == "'${VAR}'" { print $2 }' ${DATAFILE}

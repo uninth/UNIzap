@@ -1,0 +1,37 @@
+#! /var/opt/UNItools/bin/bash
+#
+# $Header: /lan/ssi/shared/software/internal/UNIzab/src/RCS/mk.i2-zabbix-agent-UserParameter,v 1.2 2015/08/19 09:19:47 root Exp $
+#
+
+cd /var/opt/UNIzab/data
+
+test -f data_day	|| {
+	echo data_day  missing; exit
+}
+test -f data_hour	|| {
+	echo data_hour missing; exit
+}
+test -f data_min	|| {
+	echo data_min  missing; exit
+}
+
+(
+cat << EOF
+#
+# made by $0 on `/bin/date`
+#
+EOF
+
+for f in data_hour data_day data_min
+do
+	echo "# $f"
+	awk -F';' '$0 !~ /col2za-finished-ok/ { print $1 }' $f | while read X
+	do
+		#echo "UserParameter=$X,awk -F';' '\$1 == \"$X\" { print \$2 }' /var/opt/UNIzab/data/$f"
+		echo "UserParameter=$X,/var/opt/UNIzab/bin/rzup $X $f"
+
+	done
+done
+) > /var/opt/UNIzab/etc/zabbix_agentd/zabbix_agentd.userparams.conf
+
+

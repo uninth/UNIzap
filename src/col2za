@@ -1,0 +1,491 @@
+#! /bin/bash
+#
+# $Header: /lan/ssi/shared/software/internal/UNIzab/src/RCS/col2za,v 1.6 2015/12/04 15:13:18 root Exp root $
+#
+############################################################################################################
+#                         Copyright (c) 2015 Niels Thomas Haugård and Nicolai Ernst                        #
+#                                                                                                          #
+#   THIS IS UNPUBLISHED PROPRIETARY SOURCE CODE CREATED BY NIELS THOMAS HAUGAARD AND NICOLAI ERNST, I2.DK  #
+#   The copyright notice above does not evidence any  actual or intended publication of such source code.  #
+#                                                                                                          #
+#   Focus areas based on 'How To Perform a Gaia and SecurePlatform Firewall Health Check'                  #
+#   http://supportcontent.checkpoint.com/documentation_download?ID=12143                                   #
+#   and Zabbix Linux agent dat                                                                             #
+#   https://www.zabbix.com/documentation/2.0/manual/appendix/items/supported_by_platform                   #
+############################################################################################################
+
+#
+# Global environment vars
+#
+
+PREFIX=/var/opt/UNIzab
+
+DATADIR=${PREFIX}/data/
+TMPDIR=${PREFIX}/tmp
+LOGDIR=${PREFIX}/log
+ETCDIR=${PREFIX}/etc
+
+DATAMIN=${DATADIR}/data_min
+DATAHOUR=${DATADIR}/data_hour
+DATADAY=${DATADIR}/data_day
+
+VERBOSE=1
+VERBOSE=0
+
+#
+# Functions
+#
+function mydie {
+	echo $*
+	logger -p mail.crit "mydie: $0 $*"
+	/bin/rm -f $TMPFILE
+	exit 1
+}
+
+# gnu date
+function datediff() {
+	d1=$(date -d "$1" +%s)
+	d2=$(date -d "$2" +%s)
+	echo $(( (d1 - d2) / 86400 )) # days
+}
+
+function run_min()
+{
+	################################################################################
+	#
+	# Start at random seconds, run then sleep until 05 and run forever. Zabbix collects
+	# data at 00
+	#
+	################################################################################
+	while :;
+	do
+		start=$(/bin/date +"%s")
+		[ ${VERBOSE} -ne 0 ] && echo $N "$0 min starting: $start $C"
+
+		(
+
+		# NTP leaves by default no trace in /var/log
+		# ntpstat:
+		# exit status 0 - Clock is synchronised.
+		# exit status 1 - Clock is not synchronised.
+		# exit status 2 - If clock state is indeterminant, for example if ntpd is not contactable.
+		ntpstat >/dev/null 2>&1
+		echo "NTPSTAT;$?;0:sync ok 1:not synced 2:indeterminant/ntpd is not contactable"
+
+		# netstat -s|awk '
+		#	$0 ~ /total packets received/		{  print "NSIPTR;" $1 ";IP total packets received"; next }
+		#	$0 ~ /incoming packets discarded/	{  print "NSIPPD;" $1 ";IP incoming packets discarded"; next }
+		#	$0 ~ /ICMP messages received/		{  print "NSICMPR;" $1 ";ICMP messages received"; next }
+		#	$0 ~ /ICMP messages failed/			{  print "NSICMPF;" $1 ";ICMP messages failed"; next }
+		#	$0 ~ /active connections openings/	{  print "NSTCPAC;" $1 ";TCP active connections openings"; next }
+		#	$0 ~ /passive connection openings/	{  print "NSTCPPC;" $1 ";TCP passive connection openings"; next }
+		#	$0 ~ /bad segments received/		{  print "NSTCPBS;" $1 ";TCP bad segments received"; next }
+		#	$0 ~ /packets received/				{  print "NSUDPPR;" $1 ";UDP packets received"; next }
+		#	$0 ~ /packet receive errors/		{  print "NSUDPPE;" $1 ";UDP packet receive errors"; next }
+		#'
+
+		# fw Memory Usage
+		fw ctl pstat > $TMPFILE
+
+		#System Capacity Summary - Concurrent Connections total
+		#CPSCC=`awk ' BEGIN { P = 0; }
+		#	$0 ~ /Capacity Summary/		{ P = 1; }
+		#	$0 ~ /Hash kernel memory/	{ P = 0; }
+		#	{ if (P == 1)
+		#		{
+		#			if ($0 ~ /Concurrent Connections/)
+		#			{
+		#				if ($0 ~ /Unlimited/)	{ CC=$3; next; }
+		#				else			{ gsub(/[()]/,"", $4); CC=$4;; next; }
+		#			}
+		#		}
+		#	}
+		#	END { print CC }
+		#' < $TMPFILE`
+		#echo "CPSCC;${CPSCC:="0"};Concurrent Connections total"
+
+		# enabled_blades
+		if type enabled_blades >/dev/null 2>&1; then
+			CPBLADES=`enabled_blades`					# is empty on stand-alone management station
+		else
+			CPBLADES="Unknown, tool requires version R77.xx or later"
+		fi
+		echo "CPBLADES;${CPBLADES:="Unknown"};enabled blades on R77.xx"
+
+		# Concurrent Connections:
+		CPCONPCC=`sed '/^Connections:/,/Fragments:/!d;/concurrent,/!d;s/^.*recovered, //; s/\([0-9]*\) .*/\1/' < $TMPFILE`
+		echo "CPCONPCC;${CPCONPCC:="0"};Concurrent Connections"
+
+		# Peak Concurrent
+		CPCONPPC=`sed '/^Connections:/,/Fragments:/!d;/peak concurrent/!d; s/peak concurrent$//; s/^[ \t]*//;s/[ \t]*$//' < $TMPFILE`
+		echo "CPCONPPC;${CPCONPPC:="0"};Peak Concurrent Connections"
+
+		CPSCCPCT=`sed '/Capacity Summary/,/Hash kernel memory/!d;/Memory/!d;s/[a-zA-Z: ]*\([0-9]*\)\%.*/\1/' < $TMPFILE`
+		echo "CPSCCPCT;${CPSCCPCT:="0"};% System|Machine Capacity Summary"
+
+		CPHMEMPCT=`sed '/Hash kernel memory/,/System kernel memory/!d;/Total memory blocks used/!d; s/.*(//; s/%).*//;' < $TMPFILE`
+		echo "CPHMEMPCT;${CPHMEMPCT:="0"};% Total memory blocks used"
+
+		CPHMEMFA=`sed '/Hash kernel memory/,/System kernel memory/!d; /failed alloc/!d; s/failed alloc.*//; s/^.*alloc, //; s/ *//g' < $TMPFILE`
+		echo "CPHMEMFA;${CPHMEMFA:="0"};Hmem failed alloc"
+
+		CPSCPKMFA=`sed '/System kernel memory/,/Kernel memory/!d; /failed alloc/!d; s/failed alloc.*//; s/^.*alloc, //; s/ *//g' < $TMPFILE`
+		echo "CPSCPKMFA;${CPSCPKMFA:="0"};System kernel memory"
+
+		CPKMFA=`sed '/Kernel memory/,/External Allocations/!d; /failed alloc/!d; s/failed alloc.*//; s/^.*alloc, //; s/ *//g' < $TMPFILE`
+		echo "CPKMFA;${CPKMFA:="0"};Kernel memory"
+
+		# Fragmentation expired
+		CPEXPIRED_FRAGMENTS=`sed '/Fragments:/,/^$/!d; /Fragments/d; /expired/!d; s/^.*packets,//; s/expired.*//; s/ *//g;' < $TMPFILE`
+		echo "CPEXPIRED_FRAGMENTS;${CPEXPIRED_FRAGMENT:="0"};Fragments expired"
+
+		# Fragmentation failed
+		CPFAILED_FRAGMENTS=`sed '/Fragments:/,/^$/!d; /Fragments/d; /failures/!d; s/^.*duplicates,//; s/failures.*//; s/ *//g;' < $TMPFILE`
+		echo "CPFAILED_FRAGMENTS;${CPFAILED_FRAGMENTS:=0};Fragments failures"
+
+		# 
+		awk '
+			BEGIN { P = 0;
+				CPCONNTOTAL=0;
+				CPCONNTCP=0;
+				CPCONNUDP=0;
+				CPCONNICMP=0;
+				CPCONNOTHER=0
+			}
+			$0 == "Connections:"	{ P = 1; next }
+			$0 == "Fragments:"	{ P = 0; next }
+			{ if (P == 1)
+				{
+					if ($0 ~ /total/)
+					{
+						CPCONNTOTAL=$1
+						CPCONNTCP=$3
+						CPCONNUDP=$5
+						CPCONNICMP=$7
+						next
+					}
+					if ($0 ~ /anticipated/)
+					{
+						CPCONNOTHER=$1
+					}
+				}
+				else
+				{
+					next;
+				}
+			}
+			END {
+				print "CPCONNTOTAL;" CPCONNTOTAL ";total connnections"
+				print "CPCONNTCP;" CPCONNTCP ";tcp connections"
+				print "CPCONNUDP;" CPCONNUDP ";udp connections"
+				print "CPCONNICMP;" CPCONNICMP ";icmp connections"
+				print "CPCONNOTHER;" CPCONNOTHER ";other connections"
+			}
+			
+		' < $TMPFILE
+
+		# total arp entries see sk43772
+		arp -n | awk 'END {print "ARPTABLE;" NR ";full arp table size"}'
+		awk '{ print "GC_THRESH1;" $0 ";minimum number of entries to keep in the ARP cache before starting the garbage collector"}' /proc/sys/net/ipv4/neigh/default/gc_thresh1
+		awk '{ print "GC_THRESH2;" $0 ";The soft maximum number of entries to keep in the ARP cache, exceedable for 5 seconds before garbage collection starts"}' /proc/sys/net/ipv4/neigh/default/gc_thresh2
+		awk '{ print "GC_THRESH3;" $0 ";The hard maximum number of entries to keep in the ARP cache"}' /proc/sys/net/ipv4/neigh/default/gc_thresh3
+
+
+		# check unreachable gateways with static route(s) - just print the number of failed gw's
+		/var/opt/UNItools/bin/fping -e `netstat -rn | awk 'NR > 2 && $2 != "0.0.0.0" { gw[$2]++;  }; END { for (n in gw) print n }'` 2>&1	|
+			awk 'BEGIN { unreachable=0}; $0 ~ /is alive/ { next; } { unreachable++ }; END { print unreachable }'	|
+		while read unreachable_gateways
+		do
+			echo "UNREACHABLE;${unreachable_gateways};Number of unresponsive gateways with static routes"
+		done
+
+		# same, but print each failed gw's
+		/var/opt/UNItools/bin/fping -e `netstat -rn | awk 'NR > 2 && $2 != "0.0.0.0" { gw[$2]++;  }; END { for (n in gw) print n }'` 2>&1 |
+		awk '
+			BEGIN { all=0; down=0; ok=0; arr }
+			$0 !~ / is / { next };
+			$0 ~ /is alive/ { all++; ok++; next; }
+			{ gw[$1]++; all++; down++; next; }
+			END {
+				if (down)
+				{
+					printf("Total: %d, ok: %d, down: %d. ipaddr: ", all, ok, down);
+					for (i in gw) printf("%s ", i)
+					printf("\n");
+				}
+				else
+				{
+					printf("Total: %d,ok: %d, down: %d\n", all, ok, down);
+				}
+			}
+		' 2>&1 | while read unreachable_gateways_info
+		do
+			echo "UNREACHABLE_IPADRRS;${unreachable_gateways_info} List of unresponsive gateways with static routes"
+		done
+
+#		/bin/netstat -i | awk 'NR > 2 { if ($1 != "lo" && $1 !~ /[0-9]*\.[0-9]*/ ) print $1 }' | while read IFNAME
+#		do
+#			LINK=`/sbin/ethtool ${IFNAME} | sed '/Link/!d; s/.*Link.*://; s/^[ \t]*//;s/[ \t]*$//; s/yes/1/; s/no/0/;'`
+#			SPEED=`/sbin/ethtool ${IFNAME} | sed '/Speed/!d; s/.*Speed:[\t ]*\(.*\)/\1/; s/Unknown/0/; s/[^0-9]*//g'`
+#			DUPLEX=`/sbin/ethtool ${IFNAME} | sed '/Duplex/!d; s/.*Duplex:[\t ]*\(.*\)/\1/'`
+#			echo "${IFNAME}-LINK;${LINK};Link: 1 up, 0 down"
+#			echo "${IFNAME}-SPEED;${SPEED};Speed: 0 10 100 1000 ..."
+#			echo "${IFNAME}-DUPLEX;${DUPLEX};Duplex"
+#		done
+
+		echo "col2za-finished-ok"
+		) | uniq > ${DATAMIN}.tmp
+
+		chmod 744 ${DATAMIN} ${DATAMIN}.tmp
+		/bin/mv ${DATAMIN}.tmp ${DATAMIN}
+
+		/bin/rm -f $TMPFILE
+		end=$(/bin/date +"%s")
+		diff=$(($end-$start))
+
+		timetofive=$(date +%S)
+		sleeptime=$((65-10#$timetofive))        # 10# forces bash to assume base10, leading zeros
+							# make bash assume the number is in
+							# base 8 system.
+
+		[ ${VERBOSE} -ne 0 ] && echo "$end -- $(($diff / 60)) minutes and $(($diff % 60)) seconds elapsed"
+		[ ${VERBOSE} -ne 0 ] && echo "sleeping $sleeptime (5 seconds passed 00) `/bin/date +%T`"
+		sleep $sleeptime
+	done
+}
+
+function run_hour()
+{
+	################################################################################
+	#
+	# Run from cron - run only once
+	#
+	################################################################################
+
+	start=$(/bin/date +"%s")
+	[ ${VERBOSE} -ne 0 ] && echo $N "$0 hour starting: $start $C"
+
+	(
+	if [ -x  /opt/compaq/hpacucli/bld/hpacucli ]; then
+		RAID_STATUS=`/var/opt/UNIzab/bin/check_cciss`
+	else
+		RAID_STATUS="No HP RAID"
+	fi
+	echo "RAID_STATUS;${RAID_STATUS};HP hardware RAID and controller status"
+
+	# rulebasename | not a firewall / text
+	# install date | not a firewall / text
+
+	fw stat | awk '
+		BEGIN { PNAME = ""; IDATE = ""; }
+		$1 == "HOST" { next };
+		$1 == "localhost" { PNAME = $2; IDATE = $3 " " $4; next }
+		$0 ~ /not a FireWall-1 module/ { PNAME = "localhost is not a firewall"; IDATE = "n/a" }
+		END { print "PNAME;" PNAME ";Policy name"; print "IDATE;" IDATE ";Installation date"  }
+        '
+	# cphaprob stat| active: 1, standby: 2, stand-alone:3, not a firewall:0
+	# cphaprob stat|awk '$0 ~ /HA module/ { print $0; next }; $2 == "(local)" { print $NF; next }; $0 ~ /not a FireWall/ { print $0; next }'
+
+	echo "col2za-finished-ok"
+	) | uniq > ${DATAHOUR}.tmp
+	sync; sync; sync
+
+	chmod 744 ${DATAHOUR} ${DATAHOUR}.tmp
+	/bin/mv ${DATAHOUR}.tmp ${DATAHOUR}
+
+	end=$(/bin/date +"%s")
+	diff=$(($end-$start))
+
+	timetofive=$(date +%S)
+	sleeptime=$((65-10#$timetofive))        # 10# forces bash to assume base10, leading zeros
+						# make bash assume the number is in
+						# base 8 system.
+
+	[ ${VERBOSE} -ne 0 ] && echo "$end -- $(($diff / 60)) minutes and $(($diff % 60)) seconds elapsed."
+
+}
+
+function run_day()
+{
+	################################################################################
+	#
+	# Certificate and contract expire check. Should be done once a day only
+	#
+	################################################################################
+
+	start=$(/bin/date +"%s")
+	[ ${VERBOSE} -ne 0 ] && echo $N "$0 hour starting: $start $C"
+
+		# check contract certificate not expired
+		# EXPDATE="`cplic print|awk -F'|' 'NF == 4 { print $3 }'`"
+		EXPDATE="`cplic print|awk -F'|' 'NF == 4 && $0 ~ /CPCES/ { print $3 }'`"
+
+		NOW="`/bin/date '+%d%b%Y'`"
+		CONTRACTDAYSLEFT=`datediff ${EXPDATE} ${NOW}`
+
+
+		# This prints the last valid cert valid date and assumes it is the one used
+		CPCAEXPIRE=`cpca_client lscert -stat Valid -kind SIC| sed '/Not_Before/!d; s/.*Not_After://'|sort -n -k5 -k2M -k3 -k4|tail -1`
+		CPCAEXPIREIKE=`cpca_client lscert -stat Valid -kind IKE | sed -n '/Not_Before/!d; s/.*Not_After://'|sort -n -k5 -k2M -k3 -k4|tail -1`
+
+		# On a secondary management station the output from cpca_client ... is 'Operation failed. rc=-1.' - which is '' after sed ..., so
+		# in that case we will return '9999'
+
+		# This assumes the certificates are printed with forth running serials
+		# CPCAEXPIRE=`cpca_client lscert -stat Valid -kind SIC | sed -n '/Not_Before/h; { $x; s/.*Not_After: //; $p; }'`
+				# the x command swaps the hold and pattern buffers
+				# the h command replaces the current hold buffer with each line containing Not_After:
+				# the p command prints the pattern buffer
+				# See http://stackoverflow.com/questions/15353962/print-last-matching-line
+	
+		# I think CP will automatic renew SIC certificates and I'm not sure if we uses IKE anywhere
+
+		# SIC
+		SICEXPIRE=`cpca_client lscert -stat Valid -kind SIC| sed '/Not_Before/!d; s/.*Not_After://'|sort -n -k5 -k2M -k3 -k4|tail -1`
+		if [ -z "${SICEXPIRE}" ]; then
+			echo SICEXPIRE is empty
+				SICEXPIRE=9999
+		else
+			SICDAYS=`datediff "${SICEXPIRE}" "${NOW}"`
+		fi
+
+		# IKE
+		IKEEXPIRE=`cpca_client lscert -stat Valid -kind IKE | sed '/Not_Before/!d; s/.*Not_After://'|sort -n -k5 -k2M -k3 -k4|tail -1`
+		if [ -z "${IKEEXPIRE}" ]; then
+			echo CPCAEXPIRE is empty
+			IKEEXPIRE=9999
+		else
+			IKEDAYS=`datediff "${IKEEXPIRE}" "${NOW}"`
+		fi
+
+		FWVER=`fw ver`
+		# mgmt? fwd fwm running 
+		# module? fwd running
+		# standalone fwd fwm running
+	
+	(
+		echo "CONTRACTDAYSLEFT;${CONTRACTDAYSLEFT};contract expire days"
+		echo "CPCADAYSLEFT;${SICDAYS};days until latest valid cpca (Check Point internal CA) SIC certificate expire"
+		echo "IKECPCADAYSLEFT;${IKEDAYS};days until latest valid cpca (Check Point internal CA) IKE certificate expire"
+		echo "FWVER;${FWVER};Check Point firewall version"
+		echo "col2za-finished-ok"
+	) | uniq > ${DATADAY}.tmp
+
+
+	chmod 744 ${DATADAY} ${DATADAY}.tmp
+	/bin/mv ${DATADAY}.tmp ${DATADAY}
+
+	/bin/rm -f $TMPFILE
+	end=$(/bin/date +"%s")
+	diff=$(($end-$start))
+
+	[ ${VERBOSE} -ne 0 ] && echo "$end -- $(($diff / 60)) minutes and $(($diff % 60)) seconds elapsed."
+}
+
+function usage()
+{
+	echo "usage: $0 [min|hour|day]"; exit
+}
+
+function clean_f()
+{
+	echo trapped
+	/bin/rm -f $LOCKFILE $TMPFILE
+	exit 1
+}
+
+################################################################################
+#
+# Main
+#
+################################################################################
+
+trap clean_f 1 2 3 13 15
+
+echo=/bin/echo
+case ${N}$C in
+	"") if $echo "\c" | grep c >/dev/null 2>&1; then
+		N='-n'
+	else
+		C='\c'
+	fi ;;
+esac
+
+#
+# Process arguments
+#
+while getopts vh opt
+do
+case $opt in
+    v)  VERBOSE=1
+    ;;
+    *)  usage
+    ;;
+esac
+done
+shift `expr $OPTIND - 1`
+
+if [ $# != 1 ]; then
+	usage
+fi
+
+case $1 in
+	min|hour|day)	: # ok
+	;;
+	*)	usage
+	;;
+esac
+
+#
+# Setup Check Point environment
+#
+case `uname` in
+	IPSO)		. $HOME/.profile	> /dev/null 2>&1
+	;;
+	Linux|Solaris)	. $HOME/.bash_profile	> /dev/null 2>&1
+			. $HOME/.bashrc		> /dev/null 2>&1
+	;;
+	*)		. $HOME/.profile	> /dev/null 2>&1
+	;;
+esac
+
+if [ -f /tmp/.CPprofile.sh ]; then
+.	/tmp/.CPprofile.sh
+fi
+
+test -d ${DATADIR}	|| mkdir ${DATADIR}
+test -d ${TMPDIR}	|| mkdir ${TMPDIR}
+test -d ${LOGDIR}	|| mkdir ${LOGDIR}
+test -d ${ETCDIR}	|| mkdir ${ETCDIR}
+
+TMPFILE=${TMPDIR}/$1-fw_ctl_pstat.tmp.$$
+LOCKFILE=${TMPDIR}/lock-$1
+
+LOCKED=0
+
+if [ ! -s ${LOCKFILE} ]; then
+	echo $$ > ${LOCKFILE}
+	LOCKED=1
+else
+	if ( ps h `cat $LOCKFILE` ); then
+		echo lock file ${LOCKFILE} exists and process running
+		exit 1
+	else
+		echo $$ > ${LOCKFILE}
+	fi
+fi
+
+case $1 in
+	min)	run_min
+	;;
+	hour)	run_hour
+	;;
+	day)	run_day
+	;;
+	*)	usage
+	;;
+esac
+
+/bin/rm -f $LOCKFILE $TMPFILE
+
+exit 0

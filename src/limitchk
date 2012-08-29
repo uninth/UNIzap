@@ -1,0 +1,11 @@
+#!/bin/bash
+#
+# $Header: /lan/ssi/shared/software/internal/UNIzab/src/RCS/limitchk,v 1.1 2015/05/12 16:58:22 root Exp $
+#
+
+
+#limit
+fw tab -t connections | grep limit
+
+# peak
+fw tab -t connections -s | grep limit

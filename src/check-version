@@ -1,0 +1,38 @@
+:
+
+# zabbix 10050
+
+release=`sed '/^release.*=/!d; s/.*=//; s/^[ \t]*//' Makefile`
+
+# echo $version
+# echo $release
+FILE=`make printinfo`
+RPM=`basename $FILE`
+
+if [ ! -f "${FILE}" ]; then
+	echo "logic fail: ${FILE} not found"
+	echo "see $0"
+	echo "version = $version and release = $release extracted from Makefile"
+	exit 0
+else
+	echo "# version = $version and release = $release extracted from Makefile"
+	echo "# RPM file ${RPM}"
+fi
+
+LATEST="UNIzab-${version}-${release}"
+
+ssh -qt root@buh '/opt/UNImsp/bin/mspcfg -g fw1' | sed '/fw2.musikkons.dk/d; /fw_zu/d; /-----/d; /ipv4addr/d; /^#/d; /^$/d'|while read CIDR IP JUNK JUNK
+do
+	#printf "# CIDR = %s[%s] "  $CIDR $IP
+	VERSION=`echo 'rpm -qa |grep UNIzab' | ssh -qT $IP`
+	if [ "${VERSION}" != "${LATEST}" ]; then
+		#printf ": upgrade from %s to %s\n" "${VERSION}" "${LATEST}"
+		#td -x $FILE $CIDR # >/dev/null 2>&1
+		echo "echo rpm -Uvh /var/tmp/UNIzab-1.0-12.i386.rpm | ssh $IP"
+		#echo td $CIDR
+		#echo rpm -Uvh /var/tmp/${RPM}
+	else
+		printf "%-30s\t is latest\n" "${VERSION}"
+	fi
+	echo "# -----------------------------------------------------------------------------"
+done
