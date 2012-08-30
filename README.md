@@ -142,5 +142,5 @@ The source is written in shell and changes should be easy to adapt.
 
 This is released under a
 [modified BSD License](https://opensource.org/licenses/BSD-3-Clause), but
-see LICENSE for zabbix, RedHat and HP copy writed material.
+see LICENSE for zabbix, RedHat and HP cxopyright material.
 
