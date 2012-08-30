@@ -29,7 +29,7 @@ There is no documentation for the zabbix configuration, please consult
 
 The following parameters are monitored:
 
-### Check Point
+#### Check Point
   - Check Point concurrent connections
   - Check Point peak concurrent connections
   - Dead gateways with static routes
@@ -44,7 +44,9 @@ The following parameters are monitored:
   - Policy Name
   - Total number of new connnections per second
   - Unreachable gateways (ICMP)
-### CPU
+
+#### CPU
+
   - Context switches per second
   - For each CPU:
   - CPU idle time
@@ -59,28 +61,38 @@ The following parameters are monitored:
   - Processor load (1 min average per core)
   - Processor load (5 min average per core)
   - Processor load (15 min average per core)
-### Filesystems
+
+#### Filesystems
+
   - Free disk space on each filesystem
   - Free disk space on each filesystem in %
   - Total disk space on each filesystem
   - Used disk space on each filesystem
-### General
+
+#### General
+
   - Host boot time
   - Host local time
   - Host name
   - System information
   - System uptime
-### ICMP
+
+#### ICMP
+
   - ICMP loss
   - ICMP ping
   - ICMP response time
-### Memory
+
+#### Memory
+
   - Available memory
   - Free swap space
   - Free swap space in %
   - Total memory
   - Total swap space
-### Network interfaces 
+
+#### Network interfaces 
+
   - Incoming network drops on each interface
   - Incoming network errors on each interface
   - Incoming network packets on each interface
@@ -88,7 +100,9 @@ The following parameters are monitored:
   - Incoming packets dropped in percent on each interfaces
   - Outgoing network packets on each interfaces
   - Outgoing network traffic on each interfaces
-### OS
+
+#### OS
+
   - Host boot time
   - Host local time
   - Host name
@@ -97,15 +111,23 @@ The following parameters are monitored:
   - Number of logged in users
   - System information
   - System uptime
-### Processes
+
+#### Processes
+
   - Number of processes
   - Number of running processes
-Security (2 Items)
+
+#### Security
+
   - Checksum of `/etc/passwd`
   - Number of logged in users
-  - SSH service (1 Item)
+
+#### SSH service
+
   - SSH service is running
+
 ### Zabbix agent
+
   - Agent ping
   - Host name of zabbix_agentd running
   - Version of zabbix_agent(d) running
